@@ -576,8 +576,8 @@ def post_movimentacao():
         ### Parâmetros de Entrada (JSON):
         ```json
         {
-            "galpao_id": "int/string (obrigatorio) - Identificador unico do galpao",
-            "encomenda_id": "int/string (obrigatorio) - Identificador unico da encomenda"
+            "galpao_id": "int (obrigatorio) - Identificador unico do galpao",
+            "encomenda_id": "int (obrigatorio) - Identificador unico da encomenda"
         }
         ```
 
@@ -930,6 +930,7 @@ def put_encomenda(var_id):
         ```json
         {
             "remetente": "string (obrigatorio) - Novo nome ou descricao do remetente"
+            "cliente_id": "int (obrigatorio) - Identificador unico da cliente"
         }
         ```
 
@@ -959,10 +960,12 @@ def put_encomenda(var_id):
     if request.method == "PUT":
         dados = request.get_json()
         remetente = dados.get("remetente")
-        if not remetente:
+        cliente_id = dados.get("cliente_id")
+        if not remetente or not cliente_id:
             return jsonify({"msg": "Valores Indefinidos"}), 400
         try:
             result_enco.remetente = remetente
+            result_enco.cliente_id = cliente_id
             db.commit()
             return jsonify({"msg": "Encomenda atualizada com sucesso"}), 200
         except Exception as e:
