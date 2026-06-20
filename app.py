@@ -2,10 +2,8 @@ import random
 import string
 from datetime import datetime
 from functools import wraps
-from flask import Flask, jsonify, request, json
+from flask import Flask, jsonify, request
 from sqlalchemy import select
-from sqlalchemy.testing.pickleable import User
-
 from models import SessionLocalExemplo, Movimentacao, Encomenda, Cliente, Usuario, Galpao
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 
@@ -21,7 +19,6 @@ def shutdown_session(exception=None):
     db.remove()
     db.close()
 
-
 def load_user(id_u1):
     db = SessionLocalExemplo()
     user = select(Usuario).where(Usuario.id_usuario == int(id_u1))
@@ -29,11 +26,9 @@ def load_user(id_u1):
     db.close()
     return resultado
 
-
 def gerar_codigo_random(tamanho=8):
     caracteres = string.ascii_letters + string.digits
     return ''.join(random.choice(caracteres) for _ in range(tamanho))
-
 
 def admin_required(fn):
     @wraps(fn)
@@ -108,7 +103,6 @@ def get_encomenda():
         print(f"ERROR: {e}")
     finally:
         db.close()
-
 
 @app.route("/get_movimentacao", methods=["GET"])
 def get_movimentacao():
@@ -197,7 +191,6 @@ def get_movimentacao():
     finally:
         db.close()
 
-
 @app.route("/get_clientes", methods=["GET"])
 def get_clientes():
     """
@@ -238,7 +231,6 @@ def get_clientes():
         print(f"ERROR: {e}")
     finally:
         db.close()
-
 
 @app.route('/get_galpoes', methods=['GET'])
 def get_galpoes():
@@ -285,7 +277,6 @@ def get_galpoes():
         db.close()
 
 
-
 @app.route("/post_usuario", methods=["POST"])
 def post_usuario():
     """
@@ -306,7 +297,7 @@ def post_usuario():
         ```
 
         ### Respostas (JSON):
-        * **201 Created:** Usuario registrado com sucesso.
+        * **200 Created:** Usuario registrado com sucesso.
           ```json
           {
               "msg": "Usuario cadastrado"
@@ -337,7 +328,7 @@ def post_usuario():
     data_nascimento = dados.get("data_nascimento")
     email = dados.get("email")
     perfil = dados.get("perfil")
-
+    print(nome, email, senha, data_nascimento, perfil)
     if not nome or not senha or not email or not perfil or not data_nascimento:
         return jsonify({"msg": "Valor não Encontrado"}), 400
     data = datetime.strptime(data_nascimento, '%Y-%m-%d')
@@ -347,19 +338,19 @@ def post_usuario():
 
     if result_usuario:
         return jsonify({"msg": "Usuario já cadastrado"}), 409
+
     try:
         user = Usuario(nome=nome, email=email, data_nascimento=data, perfil=perfil)
         user.set_password(senha)
         db.add(user)
         db.commit()
-        return jsonify({"msg": "Usuario cadastrado"}), 201
+        return jsonify({"msg": "Usuario cadastrado"}), 200
     except Exception as e:
         db.rollback()
         print(f"ERROR: {e}")
         return jsonify({"msg": f"Erro ao registrar usuário: {str(e)}"}), 500
     finally:
         db.close()
-
 
 @app.route("/logar_usuario", methods=["POST"])
 def logar_usuario():
@@ -425,7 +416,6 @@ def logar_usuario():
     finally:
         db.close()
 
-
 @app.route("/post_encomenda", methods=["POST"])
 def post_encomenda():
     """
@@ -443,7 +433,7 @@ def post_encomenda():
         ```
 
         ### Respostas (JSON):
-        * **201 Created:** Encomenda registrada com sucesso.
+        * **200 Created:** Encomenda registrada com sucesso.
           ```json
           {
               "msg": "Encomenda cadastrada com sucesso"
@@ -467,119 +457,28 @@ def post_encomenda():
     codigo_r = gerar_codigo_random(8)
     status = "POSTADO"
     cliente_id = dados.get("cliente_id")
-    if not (codigo_r or remetente or cliente_id):
-        return jsonify({"msg": "Valor não Encontrado"}), 400
+    if not (remetente or cliente_id):
+        return jsonify({"msg": "Valores Indefinidos","status": "danger"}), 400
     db = SessionLocalExemplo()
     sql_encomenda = select(Encomenda).where(Encomenda.codigo_r == codigo_r)
-    result_encomenda = db.execute(sql_encomenda).first()
+    result_encomenda = db.execute(sql_encomenda).scalar()
 
     if result_encomenda:
-        return jsonify({"msg": "Encomenda já foi cadastrada"}), 400
+        return jsonify({"msg": "Encomenda já foi Cadastrado","status": "danger"}), 409
 
     try:
         encomenda = Encomenda(remetente=remetente, cliente_id=cliente_id, status_encomenda=status,
                               codigo_r=codigo_r)
         db.add(encomenda)
         db.commit()
-        return jsonify({"msg": "Encomenda cadastrada com sucesso"}), 201
+        return jsonify({"msg": "Encomenda cadastrada com sucesso","status": "success"}), 200
     except Exception as e:
         db.rollback()
         print(f"ERROR: {e}")
-        return jsonify({"msg": f"Erro ao registrar encomeda: {str(e)}"}), 500
+        return jsonify({"msg": f"Erro ao tentar Cadastrar encomeda: {str(e)}","status": "warning"}), 500
     finally:
         db.close()
-
-
-@app.route("/post_movimentacao", methods=["POST"])
-def post_movimentacao():
-    """
-        **API para Cadastro de Movimentacao**
-
-        ### Endpoint:
-        POST /post_movimentacao
-
-        ### Parâmetros de Entrada (JSON):
-        ```json
-        {
-            "galpao_id": "int/string (obrigatorio) - Identificador unico do galpao",
-            "encomenda_id": "int/string (obrigatorio) - Identificador unico da encomenda"
-        }
-        ```
-
-        ### Respostas (JSON):
-        * **201 Created:** Movimentacao registrada com sucesso.
-          ```json
-          {
-              "msg": "Movimentação cadastrado com sucesso"
-          }
-          ```
-        * **200 OK:** Movimentacao ja registrada anteriormente para o mesmo galpao e status.
-          ```json
-          {
-              "msg": "Movimentação já registrada"
-          }
-          ```
-        * **400 Bad Request:** Ausencia de campos obrigatorios.
-          ```json
-          {
-              "msg": "Valor não Encontrado"
-          }
-          ```
-        * **500 Internal Server Error:** Falha operacional no banco de dados.
-          ```json
-          {
-              "msg": "Erro ao registrar movimentacao: [Descricao do Erro]"
-          }
-          ```
-        """
-    dados = request.get_json()
-    galpao_id = dados.get("galpao_id")
-    encomenda_id = dados.get("encomenda_id")
-
-    if not galpao_id or not encomenda_id:
-        return jsonify({"msg": "Valor não Encontrado"}), 400
-    db = SessionLocalExemplo()
-
-    sql_movi = select(Movimentacao).where(Movimentacao.encomenda_id == encomenda_id).order_by(
-        Movimentacao.data_atual.desc())
-    result_movi = db.execute(sql_movi).scalars().first()
-
-    if result_movi:
-        if result_movi.status_movimentacao == "ENTRADA":
-            status = "SAIDA"
-        else:
-            status = "ENTRADA"
-    else:
-        status = "ENTRADA"
-
-    print('new status', status)
-
-    sql_veri_movi = (select(Movimentacao)
-                     .where(Movimentacao.encomenda_id == encomenda_id)
-                     .where(Movimentacao.galpao_id == galpao_id)
-                     .where(Movimentacao.status_movimentacao == status)
-                     )
-    result_vm = db.execute(sql_veri_movi).scalars().first()
-
-    print('result', result_vm)
-
-    if result_vm:
-        print("Movimentacao já cadastrada")
-        return jsonify({"msg": "Movimentação já registrada"})
-
-    try:
-        encomenda = Movimentacao(galpao_id=int(galpao_id), encomenda_id=int(encomenda_id), status_movimentacao=status)
-        db.add(encomenda)
-        db.commit()
-        return jsonify({"msg": "Movimentação cadastrado com sucesso"}), 201
-    except Exception as e:
-        db.rollback()
-        print(f"ERROR: {e}")
-        return jsonify({"msg": f"Erro ao registrar movimentacao: {str(e)}"}), 500
-    finally:
-        db.close()
-
-
+        
 @app.route('/pesquisar_encomenda', methods=['POST'])
 def pesquisar_encomenda():
     """
@@ -666,6 +565,94 @@ def pesquisar_encomenda():
     finally:
         db.close()
 
+@app.route("/post_movimentacao", methods=["POST"])
+def post_movimentacao():
+    """
+        **API para Cadastro de Movimentacao**
+
+        ### Endpoint:
+        POST /post_movimentacao
+
+        ### Parâmetros de Entrada (JSON):
+        ```json
+        {
+            "galpao_id": "int/string (obrigatorio) - Identificador unico do galpao",
+            "encomenda_id": "int/string (obrigatorio) - Identificador unico da encomenda"
+        }
+        ```
+
+        ### Respostas (JSON):
+        * **200 Created:** Movimentacao registrada com sucesso.
+          ```json
+          {
+              "msg": "Movimentação cadastrado com sucesso"
+          }
+          ```
+        * **200 OK:** Movimentacao ja registrada anteriormente para o mesmo galpao e status.
+          ```json
+          {
+              "msg": "Movimentação já registrada"
+          }
+          ```
+        * **400 Bad Request:** Ausencia de campos obrigatorios.
+          ```json
+          {
+              "msg": "Valor não Encontrado"
+          }
+          ```
+        * **500 Internal Server Error:** Falha operacional no banco de dados.
+          ```json
+          {
+              "msg": "Erro ao registrar movimentacao: [Descricao do Erro]"
+          }
+          ```
+        """
+    dados = request.get_json()
+    galpao_id = dados.get("galpao_id")
+    encomenda_id = dados.get("encomenda_id")
+
+    if not galpao_id or not encomenda_id:
+        return jsonify({"msg": "Valor não Encontrado"}), 400
+    db = SessionLocalExemplo()
+
+    sql_movi = select(Movimentacao).where(Movimentacao.encomenda_id == encomenda_id).order_by(
+        Movimentacao.data_atual.desc())
+    result_movi = db.execute(sql_movi).scalars().first()
+
+    if result_movi:
+        if result_movi.status_movimentacao == "ENTRADA":
+            status = "SAIDA"
+        else:
+            status = "ENTRADA"
+    else:
+        status = "ENTRADA"
+
+    print('new status', status)
+
+    sql_veri_movi = (select(Movimentacao)
+                     .where(Movimentacao.encomenda_id == encomenda_id)
+                     .where(Movimentacao.galpao_id == galpao_id)
+                     .where(Movimentacao.status_movimentacao == status)
+                     )
+    result_vm = db.execute(sql_veri_movi).scalars().first()
+
+    print('result', result_vm)
+
+    if result_vm:
+        print("Movimentacao já cadastrada")
+        return jsonify({"msg": "Movimentação já registrada"})
+
+    try:
+        encomenda = Movimentacao(galpao_id=int(galpao_id), encomenda_id=int(encomenda_id), status_movimentacao=status)
+        db.add(encomenda)
+        db.commit()
+        return jsonify({"msg": "Movimentação cadastrado com sucesso"}), 200
+    except Exception as e:
+        db.rollback()
+        print(f"ERROR: {e}")
+        return jsonify({"msg": f"Erro ao registrar movimentacao: {str(e)}"}), 500
+    finally:
+        db.close()
 
 @app.route("/post_cliente", methods=["POST"])
 def post_cliente():
@@ -688,7 +675,7 @@ def post_cliente():
         ```
 
         ### Respostas (JSON):
-        * **201 Created:** Cliente registrado com sucesso.
+        * **200 Created:** Cliente registrado com sucesso.
           ```json
           {
               "msg": "Cliente cadastrado com sucesso"
@@ -715,28 +702,27 @@ def post_cliente():
         endereco = dados.get("endereco")
         rua = dados.get("rua")
         numero_casa = dados.get("numero_casa")
-        if not nome or not cpf or not telefone or not endereco or not rua or not numero_casa:
-            return jsonify({"msg": "Valor não Encontrado"}), 400
+        if not nome or not cpf or not telefone or not endereco or not rua or not numero_casa or endereco == "undefined/undefined" or rua == "undefined":
+            return jsonify({"msg": "Valor não Encontrado","status": "danger"}), 400
         db = SessionLocalExemplo()
         sql_clie = select(Cliente).where(Cliente.cpf == cpf)
         result_clie = db.execute(sql_clie).first()
 
         if result_clie:
-            return jsonify({"msg": "Cliente já foi cadastrado"}), 400
+            return jsonify({"msg": "Cliente já foi Cadastrado","status": "danger"}), 409
 
         try:
             cliente = Cliente(nome=nome, cpf=cpf, telefone=telefone, endereco=endereco, rua=rua,
                               numero_casa=numero_casa)
             db.add(cliente)
             db.commit()
-            return jsonify({"msg": "Cliente cadastrado com sucesso"}), 201
+            return jsonify({"msg": "Cliente cadastrado com sucesso","status": "success"}), 200
         except Exception as e:
             db.rollback()
             print(f"ERROR: {e}")
-            return jsonify({"msg": f"Erro ao registrar cliente: {str(e)}"}), 500
+            return jsonify({"msg": f"Erro ao registrar cliente: {str(e)}","status": "warning"}), 500
         finally:
             db.close()
-
 
 @app.route('/post_galpao', methods=['POST'])
 def post_galpao():
@@ -755,7 +741,7 @@ def post_galpao():
         ```
 
         ### Respostas (JSON):
-        * **201 Created:** Galpao registrado com sucesso.
+        * **200 Created:** Galpao registrado com sucesso.
           ```json
           {
               "msg": "Galpão cadastrado com sucesso"
@@ -779,32 +765,32 @@ def post_galpao():
     estado = dados.get("estado")
     if not (cidade or estado):
         print("valores invalidos")
-        return jsonify({"msg": "Valores invalidos"}), 400
+        return jsonify({"msg": "Valores invalidos","status": "danger"}), 400
     db = SessionLocalExemplo()
     sql_galpa = select(Galpao).where(Galpao.cidade == cidade, Galpao.estado == estado)
     result_galpa = db.execute(sql_galpa).first()
     if result_galpa:
-        return jsonify({"msg": "Galpao já foi cadastrado"}), 400
+        return jsonify({"msg": "Galpao já foi Cadastrado","status": "danger"}), 409
     try:
         galpao = Galpao(cidade=cidade, estado=estado)
         db.add(galpao)
         db.commit()
-        return jsonify({"msg": "Galpão cadastrado com sucesso"}), 201
+        return jsonify({"msg": "Galpão cadastrado com sucesso","status": "success"}), 200
     except Exception as e:
         db.rollback()
         print(f"ERROR: {e}")
-        return jsonify({"msg": str(e)}), 500
+        return jsonify({"msg": f"Erro ao atualizar Galpão: {str(e)}","status":"warning"}), 500
     finally:
         db.close()
 
 
-@app.route('/put_user', methods=['PUT'])
+@app.route('/put_user/<var_id>', methods=['PUT'])
 def put_user(var_id):
     """
         **API para Edição de Usuário**
 
         ### Endpoint:
-        PUT /edit_user
+        PUT /put_user
 
         ### Parâmetros de Entrada (JSON):
         ```json
@@ -861,14 +847,13 @@ def put_user(var_id):
         finally:
             db.close()
 
-
-@app.route("/put_cliente", methods=["PUT"])
+@app.route("/put_cliente/<var_id>", methods=["PUT"])
 def put_cliente(var_id):
     """
         **API para Edição de Cliente**
 
         ### Endpoint:
-        PUT /put_cliente/<var_id>
+        PUT /put_cliente
 
         ### Parâmetros de Entrada (JSON):
         ```json
@@ -913,8 +898,10 @@ def put_cliente(var_id):
         endereco = dados.get("endereco")
         rua = dados.get("rua")
         numero_casa = dados.get("numero_casa")
-        if not nome or not cpf or not telefone or not endereco or not rua or not numero_casa:
-            return jsonify({"msg": "Valores Indefinidos"}), 400
+        print(nome,cpf,telefone,endereco,rua,numero_casa)
+        if not nome or not cpf or not telefone or not endereco or not rua or not numero_casa or endereco == "undefined/undefined" or rua == "undefined":
+            return jsonify({"msg": "Valores Indefinidos","status": "danger"}), 400
+
         try:
             result_cliente.nome = nome
             result_cliente.cpf = cpf
@@ -923,22 +910,21 @@ def put_cliente(var_id):
             result_cliente.rua = rua
             result_cliente.numero_casa = numero_casa
             db.commit()
-            return jsonify({"msg": "Cliente atualizado com sucesso"}), 200
+            return jsonify({"msg": "Cliente atualizado com sucesso","status": "success"}), 200
         except Exception as e:
             db.rollback()
             print(f"ERROR: {e}")
-            return jsonify({"msg": f"Erro ao atualizar cliente: {str(e)}"})
+            return jsonify({"msg": f"Erro ao atualizar cliente: {str(e)}","status": "warning"})
         finally:
             db.close()
 
-
-@app.route("/put_encomenda", methods=["PUT"])
+@app.route("/put_encomenda/<var_id>", methods=["PUT"])
 def put_encomenda(var_id):
     """
         **API para Edição de Encomenda**
 
         ### Endpoint:
-        PUT /put_encomenda/<var_id>
+        PUT /put_encomenda
 
         ### Parâmetros de Entrada (JSON):
         ```json
@@ -970,7 +956,6 @@ def put_encomenda(var_id):
     db = SessionLocalExemplo()
     editar_encom = select(Encomenda).where(Encomenda.id_encomenda == int(var_id))
     result_enco = db.execute(editar_encom).scalar_one_or_none()
-
     if request.method == "PUT":
         dados = request.get_json()
         remetente = dados.get("remetente")
@@ -987,14 +972,13 @@ def put_encomenda(var_id):
         finally:
             db.close()
 
-
-@app.route("/put_galpao", methods=["PUT"])
+@app.route("/put_galpao/<var_id>", methods=["PUT"])
 def put_galpao(var_id):
     """
         **API para Edição de Galpão**
 
         ### Endpoint:
-        PUT /put_galpao/<var_id>
+        PUT /put_galpao
 
         ### Parâmetros de Entrada (JSON):
         ```json
@@ -1032,17 +1016,24 @@ def put_galpao(var_id):
         cidade = dados.get("cidade")
         estado = dados.get("estado")
         print(f"{cidade}/{estado}")
-        if not cidade or not estado:
-            return jsonify({"msg": "Valores Indefinidos"}), 400
+        if not cidade or not estado or cidade == "undefined" or estado == "undefined":
+            return jsonify({"msg": "Valores Indefinidos","status": "danger"}), 400
+
+        sql_vgalpao = select(Galpao).where(Galpao.cidade == cidade).where(Galpao.estado == estado)
+        r_vgalpao = db.execute(sql_vgalpao).first()
+
+        if r_vgalpao:
+            return jsonify({"msg": "Galpao já foi editado","status": "danger"}), 409
+
         try:
             result_galpao.cidade = cidade
             result_galpao.estado = estado
             db.commit()
-            return jsonify({"msg": "Galpão atualizado com sucesso"}), 200
+            return jsonify({"msg": "Galpão atualizado com sucesso","status":"success"}), 200
         except Exception as e:
             db.rollback()
             print(f"ERROR: {e}")
-            return jsonify({"msg": f"Erro ao atualizar Galpão: {str(e)}"})
+            return jsonify({"msg": f"Erro ao atualizar Galpão: {str(e)}","status":"warning"})
         finally:
             db.close()
 
