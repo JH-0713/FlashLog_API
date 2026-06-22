@@ -457,7 +457,7 @@ def post_encomenda():
     codigo_r = gerar_codigo_random(8)
     status = "POSTADO"
     cliente_id = dados.get("cliente_id")
-    if not (remetente or cliente_id):
+    if not remetente or not cliente_id:
         return jsonify({"msg": "Valores Indefinidos","status": "danger"}), 400
     db = SessionLocalExemplo()
     sql_encomenda = select(Encomenda).where(Encomenda.codigo_r == codigo_r)
@@ -627,6 +627,20 @@ def post_movimentacao():
     else:
         status = "ENTRADA"
 
+    if status == "SAIDA":
+        sql_vmovi = select(Movimentacao).where(Movimentacao.galpao_id == galpao_id).order_by(Movimentacao.data_atual.desc())
+        result_vmovi = db.execute(sql_vmovi).scalars().first()
+        if result_vmovi:
+            print(type(result_vmovi.galpao_id),type(galpao_id))
+            if result_vmovi.galpao_id == int(galpao_id):
+                print('saida comfirmada')
+            else:
+                print('galpao errado')
+                return jsonify({"msg": "Galpão Incorreto","status": "danger"}), 400
+        else:
+            print('galpao errado')
+            return jsonify({"msg": "Galpão Incorreto","status": "danger"}), 400
+
     print('new status', status)
 
     sql_veri_movi = (select(Movimentacao)
@@ -640,17 +654,17 @@ def post_movimentacao():
 
     if result_vm:
         print("Movimentacao já cadastrada")
-        return jsonify({"msg": "Movimentação já registrada"})
+        return jsonify({"msg": "Movimentação já registrada","status":"danger"})
 
     try:
         encomenda = Movimentacao(galpao_id=int(galpao_id), encomenda_id=int(encomenda_id), status_movimentacao=status)
         db.add(encomenda)
         db.commit()
-        return jsonify({"msg": "Movimentação cadastrado com sucesso"}), 200
+        return jsonify({"msg": "Movimentação cadastrado com sucesso","status":"success"}), 200
     except Exception as e:
         db.rollback()
         print(f"ERROR: {e}")
-        return jsonify({"msg": f"Erro ao registrar movimentacao: {str(e)}"}), 500
+        return jsonify({"msg": f"Erro ao registrar Movimentação: {str(e)}","status":"warning"}), 500
     finally:
         db.close()
 
@@ -962,16 +976,16 @@ def put_encomenda(var_id):
         remetente = dados.get("remetente")
         cliente_id = dados.get("cliente_id")
         if not remetente or not cliente_id:
-            return jsonify({"msg": "Valores Indefinidos"}), 400
+            return jsonify({"msg": "Valores Indefinidos","status":"danger"}), 400
         try:
             result_enco.remetente = remetente
             result_enco.cliente_id = cliente_id
             db.commit()
-            return jsonify({"msg": "Encomenda atualizada com sucesso"}), 200
+            return jsonify({"msg": "Encomenda atualizada com sucesso","status": "success"}), 200
         except Exception as e:
             db.rollback()
             print(f"ERROR: {e}")
-            return jsonify({"msg": f"Erro ao atualizar Encomenda: {str(e)}"})
+            return jsonify({"msg": f"Erro ao atualizar Encomenda: {str(e)}","status":"warning"})
         finally:
             db.close()
 
@@ -1026,7 +1040,7 @@ def put_galpao(var_id):
         r_vgalpao = db.execute(sql_vgalpao).first()
 
         if r_vgalpao:
-            return jsonify({"msg": "Galpao já foi editado","status": "danger"}), 409
+            return jsonify({"msg": "Galpão já presente na tabela","status": "danger"}), 409
 
         try:
             result_galpao.cidade = cidade
